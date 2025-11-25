@@ -1,34 +1,25 @@
-FROM node:18-bookworm-slim as global-deps-stage
+FROM node:24-bookworm
+
+ENV TZ=America/Sao_Paulo \
+    PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+# deps p/ chromium/whatsapp-web.js/puppeteer
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium ca-certificates fonts-liberation xdg-utils \
+    libasound2 libnss3 libxss1 libatk1.0-0 libatk-bridge2.0-0 \
+    libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
+    libxrandr2 libgbm1 && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-RUN apt-get update \
-  && apt-get install -y wget gnupg nano ffmpeg=7:5.1.4-0+deb12u1 \
-  && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-  && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
-  && apt-get update \
-  && apt-get install -y google-chrome-stable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1 \
-  --no-install-recommends \
-  && rm -rf /var/lib/apt/lists/* && npm install pm2@latest -g
-
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD true
-ENV NODE_ENV=dev
-ENV CHROME_BIN=google-chrome-stable
-
-FROM global-deps-stage as develop-stage
 COPY package*.json ./
-RUN npm install
+RUN npm ci --legacy-peer-deps
 
-FROM develop-stage as build-stage
 COPY . .
-RUN npm run build
 
-FROM build-stage as development-stage
-ENV NODE_ENV=development
-ENTRYPOINT ["npm", "run", "dev:server"]
+# roda build se existir
+RUN if [ "$(npm pkg get scripts.build | tr -d '\"')" != "null" ]; then npm run build; fi
 
-FROM build-stage as production-stage
-ENV NODE_ENV=production
-COPY docker-entrypoint.sh .
-RUN chmod +x docker-entrypoint.sh
-ENTRYPOINT ["./docker-entrypoint.sh"]
+EXPOSE 9000
+CMD ["npm","run","start"]

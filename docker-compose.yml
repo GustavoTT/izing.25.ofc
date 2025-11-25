@@ -1,0 +1,65 @@
+services:
+  izing-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: izing
+      POSTGRES_USER: izing
+      POSTGRES_PASSWORD: izing
+      TZ: America/Sao_Paulo
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U izing -d izing"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  izing-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    environment: { TZ: America/Sao_Paulo }
+    volumes: [ "redisdata:/data" ]
+
+  izing-rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      TZ: America/Sao_Paulo
+    # UI opcional:
+    # ports: ["15672:15672"]
+
+  izing-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      TZ: America/Sao_Paulo
+      POSTGRES_HOST: izing-postgres
+      IO_REDIS_SERVER: izing-redis
+      AMQP_URL: amqp://guest:guest@izing-rabbitmq:5672?connection_attempts=5&retry_delay=5
+      PORT: 9000
+    depends_on:
+      - izing-postgres
+      - izing-redis
+      - izing-rabbitmq
+    ports:
+      - "18080:9000"   # debug opcional da API
+
+  izing-nginx:
+    build:
+      context: ./nginx
+    restart: unless-stopped
+    depends_on:
+      - izing-backend
+    ports:
+      - "8080:80"      # front (SPA) + proxy p/ API/WS
+
+volumes:
+  dbdata:
+  redisdata:
