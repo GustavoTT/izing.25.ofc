@@ -53,12 +53,13 @@ services:
 
   izing-nginx:
     build:
-      context: ./nginx
+      context: .                 # <<< era ./nginx
+      dockerfile: nginx/Dockerfile
     restart: unless-stopped
     depends_on:
       - izing-backend
     ports:
-      - "8080:80"      # front (SPA) + proxy p/ API/WS
+      - "8080:80"
 
 volumes:
   dbdata:
