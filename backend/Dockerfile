@@ -3,6 +3,8 @@ FROM node:24-bookworm
 ENV TZ=America/Sao_Paulo \
     PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    # pular opcionais (ex.: re2) no install
+ENV NPM_CONFIG_OPTIONAL=false
 
 # deps p/ chromium/whatsapp-web.js/puppeteer
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -14,7 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --legacy-peer-deps
+# evita compilar nativos opcionais incompatíveis com Node 24 (re2)
+RUN npm ci --omit=optional --legacy-peer-deps
 
 COPY . .
 
