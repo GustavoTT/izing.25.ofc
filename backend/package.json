@@ -15,7 +15,7 @@
     "db:seed": "npx sequelize db:seed:all"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20 <21"
   },
   "author": "Durans (lumardyelson@gmail.com)",
   "private": true,

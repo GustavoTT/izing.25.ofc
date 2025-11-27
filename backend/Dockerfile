@@ -1,4 +1,4 @@
-FROM node:24-bookworm
+FROM node:20-bookworm
 
 ENV TZ=America/Sao_Paulo \
     PUPPETEER_SKIP_DOWNLOAD=true \
