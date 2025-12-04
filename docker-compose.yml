@@ -44,12 +44,20 @@ services:
       IO_REDIS_SERVER: izing-redis
       AMQP_URL: amqp://guest:guest@izing-rabbitmq:5672?connection_attempts=5&retry_delay=5
       PORT: 9000
+      # chromium/puppeteer
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      PUPPETEER_ARGS: --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --user-data-dir=/app/.chrome
+      CHROME_ARGS: --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --user-data-dir=/app/.chrome
     depends_on:
       - izing-postgres
       - izing-redis
       - izing-rabbitmq
     ports:
       - "18080:9000"   # debug opcional da API
+    shm_size: "1gb"    # <<< essencial
+    volumes:
+      - wa_sessions:/app/.wwebjs_auth   # <<< persiste sessão
+      - chrome_cache:/app/.chrome       # <<< perfil/cache do Chromium
 
   izing-nginx:
     build:
@@ -64,3 +72,5 @@ services:
 volumes:
   dbdata:
   redisdata:
+  wa_sessions:
+  chrome_cache:
