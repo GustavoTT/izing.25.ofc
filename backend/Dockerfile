@@ -24,5 +24,8 @@ COPY . .
 # roda build se existir
 RUN if [ "$(npm pkg get scripts.build | tr -d '\"')" != "null" ]; then npm run build; fi
 
+# no final, troque o CMD pelo entrypoint
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 EXPOSE 9000
-CMD ["npm","run","start"]
+ENTRYPOINT ["/entrypoint.sh"]
