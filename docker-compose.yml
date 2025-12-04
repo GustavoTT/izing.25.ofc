@@ -44,8 +44,9 @@ services:
       IO_REDIS_SERVER: izing-redis
       AMQP_URL: amqp://guest:guest@izing-rabbitmq:5672?connection_attempts=5&retry_delay=5
       PORT: 9000
-      # chromium/puppeteer
-      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+
+      # chromium/puppeteer — usar o WRAPPER com --no-sandbox
+      PUPPETEER_EXECUTABLE_PATH: /usr/local/bin/chromium
       PUPPETEER_ARGS: --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --user-data-dir=/app/.chrome
       CHROME_ARGS: --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --user-data-dir=/app/.chrome
     depends_on:
@@ -54,10 +55,11 @@ services:
       - izing-rabbitmq
     ports:
       - "18080:9000"   # debug opcional da API
-    shm_size: "1gb"    # <<< essencial
+    shm_size: "1gb"    # essencial p/ chromium
     volumes:
-      - wa_sessions:/app/.wwebjs_auth   # <<< persiste sessão
-      - chrome_cache:/app/.chrome       # <<< perfil/cache do Chromium
+      - wa_sessions:/app/.wwebjs_auth   # persiste sessão do WhatsApp
+      - chrome_cache:/app/.chrome       # perfil/cache do Chromium
+    entrypoint: ["bash","-lc","node dist/server.js"]  # <<< sem nodemon
 
   izing-nginx:
     build:
