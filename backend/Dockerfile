@@ -1,10 +1,9 @@
 FROM node:20-bookworm
 
+# Vars base (sem apontar o executável ainda)
 ENV TZ=America/Sao_Paulo \
     PUPPETEER_SKIP_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-    # pular opcionais (ex.: re2) no install
-ENV NPM_CONFIG_OPTIONAL=false
+    NPM_CONFIG_OPTIONAL=false
 
 # deps p/ chromium/whatsapp-web.js/puppeteer
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -14,9 +13,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrandr2 libgbm1 && \
     rm -rf /var/lib/apt/lists/*
 
+# Wrapper garante flags obrigatórias quando rodar como root
+# (sempre sem sandbox e com /dev/shm otimizado)
+RUN printf '#!/usr/bin/env bash\nexec /usr/bin/chromium --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --user-data-dir=/app/.chrome "$@"\n' \
+    > /usr/local/bin/chromium && chmod +x /usr/local/bin/chromium
+
+# Agora sim, aponte o PUPPETEER para o wrapper
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chromium
+
 WORKDIR /app
 COPY package*.json ./
-# evita compilar nativos opcionais incompatíveis com Node 24 (re2)
+
+# evita compilar nativos opcionais incompatíveis (ex.: re2)
 RUN npm ci --omit=optional --legacy-peer-deps
 
 COPY . .
@@ -24,8 +32,9 @@ COPY . .
 # roda build se existir
 RUN if [ "$(npm pkg get scripts.build | tr -d '\"')" != "null" ]; then npm run build; fi
 
-# no final, troque o CMD pelo entrypoint
+# entrypoint permanece como você já usa
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
 EXPOSE 9000
 ENTRYPOINT ["/entrypoint.sh"]
