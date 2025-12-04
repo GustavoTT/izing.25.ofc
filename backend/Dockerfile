@@ -1,47 +1,38 @@
 FROM node:20-bookworm
 
-# vars base
 ENV TZ=America/Sao_Paulo \
     PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chromium \
     NPM_CONFIG_OPTIONAL=false
 
-# deps do Chromium + ferramentas de build + libvips (p/ sharp)
+# Deps Chromium e runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium ca-certificates fonts-liberation xdg-utils \
     libasound2 libnss3 libxss1 libatk1.0-0 libatk-bridge2.0-0 \
     libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
     libxrandr2 libgbm1 \
-    # >>> add: toolchain e libvips nativa
-    python3 make g++ pkg-config \
-    libvips42 libvips-dev \
-  && rm -rf /var/lib/apt/lists/*
+    # evita download do libvips pelo sharp (usa sistema)
+    libvips libvips-dev \
+    # ferramentas build caso algum nativo precise (ex.: node-gyp)
+    python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 
-# wrapper pro Chromium (força flags quando roda como root)
-RUN printf '#!/usr/bin/env bash\nexec /usr/bin/chromium --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --user-data-dir=/app/.chrome "$@"\n' \
+# Wrapper garante flags certas SEMPRE (inclui no-sandbox)
+RUN printf '#!/usr/bin/env bash\nexec /usr/bin/chromium --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage "$@"\n' \
     > /usr/local/bin/chromium && chmod +x /usr/local/bin/chromium
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chromium
-
-# >>> dica pro sharp: usar libvips do sistema (não baixar binário)
-ENV SHARP_IGNORE_GLOBAL_LIBVIPS=0
 
 WORKDIR /app
 COPY package*.json ./
 
-# npm mais resiliente a rede (opcional, mas ajuda)
-RUN npm config set fetch-retries 5 \
- && npm config set fetch-retry-factor 2 \
- && npm config set fetch-retry-maxtimeout 600000 \
- && npm config set fetch-timeout 600000
-
-# evita opcionais problemáticos (ex.: re2)
+# Instala em modo clean; sem opcionais quebradiços
 RUN npm ci --omit=optional --legacy-peer-deps
 
 COPY . .
 
-# build se existir
+# Build se existir
 RUN if [ "$(npm pkg get scripts.build | tr -d '\"')" != "null" ]; then npm run build; fi
 
-# entrypoint
+# Entrypoint cuida de locks do Chromium
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
