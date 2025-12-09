@@ -67,26 +67,21 @@ services:
       retries: 10
 
   izing-nginx:
-    build:
-      context: .
-      dockerfile: nginx/Dockerfile
-    depends_on:
-      - izing-backend
-    restart: unless-stopped
-    ports:
-      - "9090:80"
-    environment:
-      TZ: America/Sao_Paulo
-    volumes:
-      - type: bind
-        source: ./nginx/nginx.conf
-        target: /etc/nginx/conf.d/default.conf
-        read_only: true
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/ || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
+  build:
+    context: .
+    dockerfile: nginx/Dockerfile
+  depends_on:
+    - izing-backend
+  restart: unless-stopped
+  ports:
+    - "9090:80"
+  environment:
+    TZ: America/Sao_Paulo
+  healthcheck:
+    test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/ || exit 1"]
+    interval: 15s
+    timeout: 5s
+    retries: 10
 
 volumes:
   dbdata:
