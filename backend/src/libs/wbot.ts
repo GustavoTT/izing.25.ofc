@@ -14,6 +14,7 @@ interface Session extends Client {
 
 const sessions: Session[] = [];
 
+// Flags de Chromium
 const minimal_args = [
   "--autoplay-policy=user-gesture-required",
   "--disable-background-networking",
@@ -100,13 +101,14 @@ export const initWbot = async (whatsapp: Whatsapp): Promise<Session> => {
         const sessionName = whatsapp.name;
         const { tenantId } = whatsapp;
 
-        // Limpa qualquer resto de sessão anterior (SingletonLock, Default, etc)
+        // 1) LIMPA PASTA DE SESSÃO ANTES DE SUBIR NOVO CLIENTE
         await apagarPastaSessao(whatsapp.id);
 
         const sessionPath =
           process.env.WWEBJS_SESSION_PATH ||
           path.resolve(__dirname, "..", "..", ".wwebjs_auth");
 
+        // 2) CLIENT CONFIG igual ao teste que funcionou
         const wbot = new Client({
           authStrategy: new LocalAuth({
             clientId: `wbot-${whatsapp.id}`,
@@ -117,8 +119,7 @@ export const initWbot = async (whatsapp: Whatsapp): Promise<Session> => {
             executablePath: process.env.CHROME_BIN || "/usr/bin/chromium",
             args
           },
-          // ❗ NÃO força webVersion antiga: deixa o whatsapp-web.js escolher
-          // Se quiser, pode manter WEB_VERSION via env, mas sem default fixo
+          // 3) NÃO força webVersion velha. Só usa se WEB_VERSION estiver no .env
           ...(process.env.WEB_VERSION
             ? {
                 webVersion: process.env.WEB_VERSION,
