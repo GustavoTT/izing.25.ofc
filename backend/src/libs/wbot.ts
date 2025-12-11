@@ -53,13 +53,22 @@ const minimal_args = [
   "--use-mock-keychain"
 ];
 
-export const apagarPastaSessao = async (id: number | string): Promise<void> => {
-  const pathRoot = path.resolve(__dirname, "..", "..", ".wwebjs_auth");
+/**
+ * Remove completamente a pasta da sessão wbot-X (inclusive SingletonLock).
+ */
+export const apagarPastaSessao = async (
+  id: number | string
+): Promise<void> => {
+  const pathRoot =
+    process.env.WWEBJS_SESSION_PATH ||
+    path.resolve(__dirname, "..", "..", ".wwebjs_auth");
+
   const pathSession = `${pathRoot}/session-wbot-${id}`;
+
   try {
+    logger.info(`apagarPastaSessao:: ${pathSession}`);
     await rm(pathSession, { recursive: true, force: true });
   } catch (error) {
-    logger.info(`apagarPastaSessao:: ${pathSession}`);
     logger.error(error);
   }
 };
@@ -80,128 +89,147 @@ const args: string[] = process.env.CHROME_ARGS
   ? process.env.CHROME_ARGS.split(",")
   : minimal_args;
 
+// garante user-agent igual ao default do whatsapp-web.js
 args.unshift(`--user-agent=${DefaultOptions.userAgent}`);
 
 export const initWbot = async (whatsapp: Whatsapp): Promise<Session> => {
   return new Promise((resolve, reject) => {
-    try {
-      const io = getIO();
-      const sessionName = whatsapp.name;
-      const { tenantId } = whatsapp;
-      let sessionCfg;
-      if (whatsapp?.session) {
-        sessionCfg = JSON.parse(whatsapp.session);
-      }
+    (async () => {
+      try {
+        const io = getIO();
+        const sessionName = whatsapp.name;
+        const { tenantId } = whatsapp;
 
-      const wbot = new Client({
-        authStrategy: new LocalAuth({ clientId: `wbot-${whatsapp.id}` }),
-        takeoverOnConflict: true,
-        puppeteer: {
-          // headless: false,
-          executablePath: process.env.CHROME_BIN || undefined,
-          args
-        },
-        webVersion: process.env.WEB_VERSION || "2.2409.2",
-        webVersionCache: {
-          type: "remote",
-          remotePath:
-            "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html"
-        },
-        qrMaxRetries: 5
-      }) as Session;
+        // Limpa qualquer resto de sessão anterior (SingletonLock, Default, etc)
+        await apagarPastaSessao(whatsapp.id);
 
-      wbot.id = whatsapp.id;
+        const sessionPath =
+          process.env.WWEBJS_SESSION_PATH ||
+          path.resolve(__dirname, "..", "..", ".wwebjs_auth");
 
-      wbot.initialize();
+        const wbot = new Client({
+          authStrategy: new LocalAuth({
+            clientId: `wbot-${whatsapp.id}`,
+            dataPath: sessionPath
+          }),
+          takeoverOnConflict: true,
+          puppeteer: {
+            executablePath: process.env.CHROME_BIN || "/usr/bin/chromium",
+            args
+          },
+          // ❗ NÃO força webVersion antiga: deixa o whatsapp-web.js escolher
+          // Se quiser, pode manter WEB_VERSION via env, mas sem default fixo
+          ...(process.env.WEB_VERSION
+            ? {
+                webVersion: process.env.WEB_VERSION,
+                webVersionCache: {
+                  type: "remote",
+                  remotePath:
+                    "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html"
+                }
+              }
+            : {}),
+          qrMaxRetries: 5
+        }) as Session;
 
-      wbot.on("qr", async qr => {
-        if (whatsapp.status === "CONNECTED") return;
-        logger.info(
-          `Session QR CODE: ${sessionName}-ID: ${whatsapp.id}-${whatsapp.status}`
-        );
+        wbot.id = whatsapp.id;
 
-        await whatsapp.update({ qrcode: qr, status: "qrcode", retries: 0 });
-        const sessionIndex = sessions.findIndex(s => s.id === whatsapp.id);
-        if (sessionIndex === -1) {
-          wbot.id = whatsapp.id;
-          sessions.push(wbot);
-        }
+        wbot.initialize();
 
-        io.emit(`${tenantId}:whatsappSession`, {
-          action: "update",
-          session: whatsapp
-        });
-      });
+        wbot.on("qr", async qr => {
+          if (whatsapp.status === "CONNECTED") return;
 
-      wbot.on("authenticated", async () => {
-        logger.info(`Session: ${sessionName} AUTHENTICATED`);
-      });
+          logger.info(
+            `Session QR CODE: ${sessionName}-ID: ${whatsapp.id}-${whatsapp.status}`
+          );
 
-      wbot.on("auth_failure", async msg => {
-        logger.error(
-          `Session: ${sessionName}-AUTHENTICATION FAILURE :: ${msg}`
-        );
-        if (whatsapp.retries > 1) {
-          await whatsapp.update({
-            retries: 0,
-            session: ""
-          });
-        }
+          await whatsapp.update({ qrcode: qr, status: "qrcode", retries: 0 });
 
-        const retry = whatsapp.retries;
-        await whatsapp.update({
-          status: "DISCONNECTED",
-          retries: retry + 1
-        });
-
-        io.emit(`${tenantId}:whatsappSession`, {
-          action: "update",
-          session: whatsapp
-        });
-        reject(new Error("Error starting whatsapp session."));
-      });
-
-      wbot.on("ready", async () => {
-        logger.info(`Session: ${sessionName}-READY`);
-
-        const info: any = wbot?.info;
-        const wbotVersion = await wbot.getWWebVersion();
-        const wbotBrowser = await wbot.pupBrowser?.version();
-        await whatsapp.update({
-          status: "CONNECTED",
-          qrcode: "",
-          retries: 0,
-          number: wbot?.info?.wid?.user, // || wbot?.info?.me?.user,
-          phone: {
-            ...(info || {}),
-            wbotVersion,
-            wbotBrowser
+          const sessionIndex = sessions.findIndex(s => s.id === whatsapp.id);
+          if (sessionIndex === -1) {
+            wbot.id = whatsapp.id;
+            sessions.push(wbot);
           }
+
+          io.emit(`${tenantId}:whatsappSession`, {
+            action: "update",
+            session: whatsapp
+          });
         });
 
-        io.emit(`${tenantId}:whatsappSession`, {
-          action: "update",
-          session: whatsapp
+        wbot.on("authenticated", async () => {
+          logger.info(`Session: ${sessionName} AUTHENTICATED`);
         });
 
-        io.emit(`${tenantId}:whatsappSession`, {
-          action: "readySession",
-          session: whatsapp
+        wbot.on("auth_failure", async msg => {
+          logger.error(
+            `Session: ${sessionName}-AUTHENTICATION FAILURE :: ${msg}`
+          );
+
+          if (whatsapp.retries > 1) {
+            await whatsapp.update({
+              retries: 0,
+              session: ""
+            });
+          }
+
+          const retry = whatsapp.retries;
+          await whatsapp.update({
+            status: "DISCONNECTED",
+            retries: retry + 1
+          });
+
+          io.emit(`${tenantId}:whatsappSession`, {
+            action: "update",
+            session: whatsapp
+          });
+          reject(new Error("Error starting whatsapp session."));
         });
 
-        const sessionIndex = sessions.findIndex(s => s.id === whatsapp.id);
-        if (sessionIndex === -1) {
-          wbot.id = whatsapp.id;
-          sessions.push(wbot);
-        }
+        wbot.on("ready", async () => {
+          logger.info(`Session: ${sessionName}-READY`);
 
-        wbot.sendPresenceAvailable();
-        SyncUnreadMessagesWbot(wbot, tenantId);
-        resolve(wbot);
-      });
-    } catch (err) {
-      logger.error(`initWbot error | Error: ${err}`);
-    }
+          const info: any = wbot?.info;
+          const wbotVersion = await wbot.getWWebVersion();
+          const wbotBrowser = await wbot.pupBrowser?.version();
+
+          await whatsapp.update({
+            status: "CONNECTED",
+            qrcode: "",
+            retries: 0,
+            number: wbot?.info?.wid?.user,
+            phone: {
+              ...(info || {}),
+              wbotVersion,
+              wbotBrowser
+            }
+          });
+
+          io.emit(`${tenantId}:whatsappSession`, {
+            action: "update",
+            session: whatsapp
+          });
+
+          io.emit(`${tenantId}:whatsappSession`, {
+            action: "readySession",
+            session: whatsapp
+          });
+
+          const sessionIndex = sessions.findIndex(s => s.id === whatsapp.id);
+          if (sessionIndex === -1) {
+            wbot.id = whatsapp.id;
+            sessions.push(wbot);
+          }
+
+          wbot.sendPresenceAvailable();
+          SyncUnreadMessagesWbot(wbot, tenantId);
+          resolve(wbot);
+        });
+      } catch (err) {
+        logger.error(`initWbot error | Error: ${err}`);
+        reject(err);
+      }
+    })();
   });
 };
 
